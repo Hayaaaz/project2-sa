@@ -1,0 +1,18 @@
+-------------------------
+HUMAN DIAGNOSIS (Project 2)
+-------------------------
+
+1. Root Cause
+The model server ran out of memory while loading a 7B FP16 model with a large KV cache. The kernel invoked the OOM killer and terminated the process, and systemd kept restarting it, which created a crash loop.
+
+2. Subsystem
+Memory/sizing
+
+3. Offending Line
+Out of memory: Killed process 8423 (ollama) total-vm:18402112kB, anon-rss:15994208kB
+
+4. Reasoning
+When I reviewed the logs, the first meaningful failure was the kernel’s OOM‑killer message. It showed that the model server process was holding nearly 16GB of anonymous memory, which exceeded the machine’s available RAM. The `ps` output confirmed that the same process was by far the largest memory consumer. After the kernel killed it, systemd immediately restarted the service, but each restart attempted to load the same oversized model and failed in the same way. This explains the repeating crash loop. Nothing in the storage or CPU logs pointed to a separate issue — everything traced back to memory exhaustion.
+
+5. Fix
+Use a smaller or quantized model that fits within the machine’s RAM, or increase the system’s memory. Adding a MemoryMax limit to the systemd unit would also make the failure predictable instead of triggering a system‑wide OOM kill.
