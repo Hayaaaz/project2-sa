@@ -1,0 +1,36 @@
+1. Agreement Between My Diagnosis and the AI’s
+Both my hand diagnosis and the Gemini diagnosis reached the same conclusion: the failure was caused by the Linux kernel’s Out‑Of‑Memory (OOM) killer terminating the ollama process. We both identified the memory subsystem as the source of the problem, and we both pointed to the same key log line showing the OOM kill. Gemini also agreed that the repeated crashes were caused by systemd restarting the service after each termination, which created a crash loop. In addition, both of us ruled out the NVMe timeout as a root cause because the logs clearly show that the storage subsystem recovered successfully. Overall, the AI’s interpretation aligned closely with my own.
+
+2. Where the AI Went Wrong (Failure Modes)
+Although Gemini’s diagnosis was accurate, it still showed a few typical AI tendencies. It gave a 100% confidence level, which is unrealistic in real system diagnosis. It also added extra context about model weights and KV cache behavior that wasn’t explicitly required, even though it was technically correct. The AI sometimes phrased things as if it had deeper insight into the system than what the logs alone provide. However, Gemini did not hallucinate any log lines, fabricate evidence, or propose unsafe fixes. Its reasoning stayed grounded in the actual logs, but it still required human verification to ensure accuracy.
+
+3. Verification of AI Quotes Against Raw Logs
+I manually checked every line that Gemini quoted against the raw evidence files (sample-incident.log, sample-ps.txt, and others). The most important line it quoted:
+
+Code
+Out of memory: Killed process 8423 (ollama) total-vm:18402112kB, anon-rss:15994208kB
+appears exactly in the raw logs. Gemini also referenced the memory exhaustion thresholds, the RSS value from the process table, and the NVMe timeout lines — all of which are present in the provided files. None of the AI’s quotes were fabricated or altered. This confirms that the AI did not hallucinate any evidence and that its diagnosis was grounded in the actual data.
+
+4. Verified Verdict and Fix (Final Answer)
+Root Cause:  
+The ollama model server attempted to load a 7B FP16 model with a large KV cache that exceeded the system’s available RAM. This caused the kernel to invoke the OOM killer and terminate the process. Systemd then restarted the service repeatedly, creating a crash loop.
+
+Subsystem:  
+Memory
+
+Offending Line:
+
+Code
+Out of memory: Killed process 8423 (ollama) total-vm:18402112kB, anon-rss:15994208kB
+Fix:  
+Use a smaller or quantized model that fits within the machine’s RAM, or increase the system’s memory. Adding a MemoryMax= limit to the systemd unit would prevent system‑wide OOM events and make failures predictable. This is a root‑cause fix, not a temporary patch.
+
+5. AI Usage Reflection
+Model Used:  
+Google Gemini (June 2026 version)
+
+Where the AI helped:  
+Gemini helped confirm the OOM kill quickly and summarized the key clues clearly. It also provided a ruled‑out alternative explanation that matched my own reasoning. The AI saved time by validating the same root cause I found manually.
+
+Where I had to override it:  
+I still had to verify every quoted line manually to ensure nothing was hallucinated. The AI’s 100% confidence level was unrealistic, and I had to rely on my own judgment to finalize the diagnosis and confirm the fix. Human review was necessary to ensure accuracy and avoid over‑trusting the model.
